@@ -156,3 +156,70 @@ export async function getStaticProps({ params }) {
 
 export default Post;
 ```
+
+### 언제 `fallback: true`를 써야하는가?
+
+`fallback: true`는 데이터에 의존하는 정적페이지가 수없이 많은 경우에 유용하다. (거대한 e-커머스 사이트를 생각해보자.) 이런 경우 일일이 모든 상품에 대해 사전 렌더링을 거칠 수는 없다.
+
+대신에, 일부 페이지에 대해서만 정적 페이지를 생성하고, 나머지에 대해서는 `fallback: true`를 사용할 수 있다.
+
+이 경우, 만약 아직 생성되지 않은 페이지에 대해 이용자가 요청한다면
+
+1. 페이지에 로딩 표시가 뜰 것이다.
+2. 잠시 후 `getStaticProps`가 끝나면 데이터(`props`)를 전달하고, 해당 데이터로 페이지를 렌더링한다.
+3. 이후에는 해당 페이지에 대해 다시 요청이 들어오면 앞서 렌더링한 페이지를 제공할 수 있다.
+
+이러한 방식으로 항상 빠른 빌드 과정을 보장할 수 있으며, 이용자들에게도 빠른 경혐을 제공할 수 있다.
+
+`fallback: true`는 생성된 페이지에 대해서 업데이트하지는 않는다. 이를 위해선 **Incremental Static Regeneration**에 대해 살펴보자.
+
+### `fallback: 'blocking'`
+
+만약, `fallback`이 `'blocking'`이라면, `getStaticPaths`에 의해 반환되지 않은 새로운 path들은 HTML이 생성되기를 기다린다. 이 시점에서 SSR(서버사이드렌더링)이 이루어진다.(`blocking`인 이유다.) 각각의 path에 대해 이러한 과정이 이루어지고 나면, 이후의 요청을 위해 캐시된다.
+
+`getStaticProps`는 다음과 같이 동작한다.
+
+- `getStaticPaths`로부터 반환받는 path들은 `getStaticProps`에 의해 빌드 시점에 HTML로 렌더링된다.
+- 빌드 시점에 생성되지 않는 path들은 404페이지를 반환하지 않는다. 대신에 NextJS는 첫번째 요청에 대해선 서버사이드렌더링(SSR)을 하고, 이후에 대해서는 생성된 페이지를 반환한다.
+- 이 작업이 끝나면, 생성된 path에 대해 생성된 HTML을 브라우저가 받는다. 이용자 입장에서는, '브라우저가 페이지를 요청하고 있다'에서 '모든 페이지가 로딩 됐다.'로 전환되며, 별도로 loading이나 fallback 페이지가 존재하지 않는다.
+- 동시에, NextJS는 사전 렌더링된 리스트에 해당 path를 추가하고, 동일한 path에 대한 추가적인 요청은 해당 페이지로 응답한다. 이제는 다른 사전렌더링 페이지와 동일하다.
+
+`fallback: 'blocking'` 역시 기본적으로는 생성된 페이지를 업데이트하지 않는다.
+
+### \*\*언제 `getStaticPaths`를 써야할까?
+
+동적 라우팅을 사용하는 페이지들을 정적으로 사전렌더링 해야할 때 `getStaticPaths`를 사용해야 한다.
+
+### TypeScript
+
+TS에서는 아래와 같이 사용한다.
+
+```JS
+import { GetStaticPaths } from 'next'
+
+export const getStaticPaths: GetStaticPaths = async () => {
+  // ...
+}
+```
+
+## Technical details
+
+### `getStaticProps`와 같이 사용하라
+
+동적 라우팅 파라미터와 함께 `getStaticProps`를 사용한다면, 반드시 `getStaticPaths`를 사용해야 한다.
+
+`getServerSideProps`와 함께 `getStaticPaths`를 사용할 수는 없다.
+
+### **빌드 시점에**, **서버 사이드에서**만 실행된다.
+
+`getStaticPaths`는 서버사이드에서 빌드시점에 실행된다.
+
+### 페이지 파일에서만 허용된다.
+
+`getStaticPaths`는 페이지 파일에서만 `export` 될 수 있다.
+
+또, 반드시 `export async function getStaticPaths() {}`형태로 써야하며, 페이지 컴포넌트 내에 프로퍼티로 추가하는 형태로 작성하면 동작하지 않는다.
+
+### development 모드에서는 매 요청마다 실행된다.
+
+`next dev`를 통해 개발 모드로 실행했을 때에는 매 요청마다 실행된다.
